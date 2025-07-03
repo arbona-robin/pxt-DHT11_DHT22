@@ -85,11 +85,18 @@ namespace dht11_dht22 {
 
             //read data (5 bytes)
             for (let index = 0; index < 40; index++) {
-                while (pins.digitalReadPin(dataPin) == 1);
+
                 while (pins.digitalReadPin(dataPin) == 0);
-                control.waitMicros(28)
-                //if sensor still pull up data pin after 28 us it means 1, otherwise 0
-                if (pins.digitalReadPin(dataPin) == 1) dataArray[index] = true
+                let t = input.runningTimeMicros()
+                while (pins.digitalReadPin(dataPin) == 1);
+                let duration = input.runningTimeMicros() - t
+            
+                // interprétation du bit selon durée
+                if (duration > 50) {
+                    dataArray[index] = true // bit = 1
+                } else {
+                    dataArray[index] = false // bit = 0
+                }
             }
 
             endTime = input.runningTimeMicros()
