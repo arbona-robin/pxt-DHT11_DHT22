@@ -107,7 +107,7 @@ namespace dht11_dht22 {
             if (checksum == checksumTmp) _readSuccessful = true
 
             //read data if checksum ok
-            if (_readSuccessful) {
+            if (true) {
                 if (DHT == DHTtype.DHT11) {
                     //DHT11
                     _humidity = resultArray[0] + resultArray[1] / 100
@@ -131,11 +131,11 @@ namespace dht11_dht22 {
                 serial.writeLine(DHTstr + " query completed in " + (endTime - startTime) + " microseconds")
                 if (_readSuccessful) {
                     serial.writeLine("Checksum ok")
-                    serial.writeLine("Humidity: " + _humidity + " %")
-                    serial.writeLine("Temperature: " + _temperature + (_temptype == tempType.celsius ? " *C" : " *F"))
                 } else {
                     serial.writeLine("Checksum error")
                 }
+                serial.writeLine("Humidity: " + _humidity + " %")
+                serial.writeLine("Temperature: " + _temperature + (_temptype == tempType.celsius ? " *C" : " *F"))
                 serial.writeLine("----------------------------------------")
             }
 
