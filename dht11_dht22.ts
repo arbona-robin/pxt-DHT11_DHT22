@@ -43,112 +43,91 @@ namespace dht11_dht22 {
     //% wait.defl=true
     //% blockExternalInputs=true
    export function queryData(DHT: DHTtype, dataPin: DigitalPin, pullUp: boolean, serialOtput: boolean, wait: boolean) {
+    const TIMEOUT = 10000;
 
-    // Initialize
-    let startTime: number = 0
-    let endTime: number = 0
-    let checksum: number = 0
-    let checksumTmp: number = 0
-    let dataArray: boolean[] = []
-    let resultArray: number[] = []
-    let DHTstr: string = (DHT == DHTtype.DHT11) ? "DHT11" : "DHT22"
+    let bits: number[] = [0, 0, 0, 0, 0];
+    let humidity = -999;
+    let temperature = -999;
 
-    for (let index = 0; index < 40; index++) dataArray.push(false)
-    for (let index = 0; index < 5; index++) resultArray.push(0)
+    _readSuccessful = false;
+    _sensorresponding = false;
 
-    _humidity = -999.0
-    _temperature = -999.0
-    _readSuccessful = false
-    _sensorresponding = false
-    startTime = input.runningTimeMicros()
+    _humidity = humidity;
+    _temperature = temperature;
 
-    // Step 1: MCU sends start signal
-    pins.digitalWritePin(dataPin, 0) // Pull pin LOW
-    basic.pause(18)
+    // Step 1: Send start signal
+    pins.digitalWritePin(dataPin, 0);
+    basic.pause(18);
+    pins.digitalWritePin(dataPin, 1);
+    pins.setPull(dataPin, PinPullMode.PullUp);
+    control.waitMicros(40);
+    pins.digitalReadPin(dataPin); // switch to input
 
-    // Step 2: MCU releases the bus (set pin HIGH + pull-up)
-    pins.digitalWritePin(dataPin, 1)
-    if (pullUp) pins.setPull(dataPin, PinPullMode.PullUp)
-    control.waitMicros(40)
-
-    // Step 3: Wait for sensor response (LOW then HIGH)
-    if (pins.digitalReadPin(dataPin) == 1) {
-        if (serialOtput) {
-            serial.writeLine(DHTstr + " not responding!")
-            serial.writeLine("----------------------------------------")
-        }
-        return
+    // Step 2: Wait for response
+    let loopCnt = TIMEOUT;
+    while (pins.digitalReadPin(dataPin) == 0) {
+        if (--loopCnt == 0) return;
     }
 
-    _sensorresponding = true
+    loopCnt = TIMEOUT;
+    while (pins.digitalReadPin(dataPin) == 1) {
+        if (--loopCnt == 0) return;
+    }
 
-    while (pins.digitalReadPin(dataPin) == 0); // wait LOW
-    while (pins.digitalReadPin(dataPin) == 1); // wait HIGH
+    // Step 3: Read 40 bits
+    let cnt = 7;
+    let idx = 0;
 
-    // Step 4: Read 40 bits (5 bytes)
-    for (let index = 0; index < 40; index++) {
-        while (pins.digitalReadPin(dataPin) == 0); // wait for bit start
-        let t = input.runningTimeMicros()
-        while (pins.digitalReadPin(dataPin) == 1); // measure HIGH duration
-        let duration = input.runningTimeMicros() - t
+    for (let i = 0; i < 40; i++) {
+        loopCnt = TIMEOUT;
+        while (pins.digitalReadPin(dataPin) == 0) {
+            if (--loopCnt == 0) return;
+        }
 
-        if (duration > 50) {
-            dataArray[index] = true // bit = 1
+        let t = input.runningTimeMicros();
+
+        loopCnt = TIMEOUT;
+        while (pins.digitalReadPin(dataPin) == 1) {
+            if (--loopCnt == 0) return;
+        }
+
+        let pulse = input.runningTimeMicros() - t;
+
+        if (pulse > 40) {
+            bits[idx] |= (1 << cnt);
+        }
+
+        if (cnt == 0) {
+            cnt = 7;
+            idx++;
         } else {
-            dataArray[index] = false // bit = 0
+            cnt--;
         }
     }
 
-    endTime = input.runningTimeMicros()
+    // Step 4: Extract values
+    let checksum = bits[0] + bits[2];
 
-    // Convert bits to bytes
-    for (let index = 0; index < 5; index++) {
-        for (let index2 = 0; index2 < 8; index2++) {
-            if (dataArray[8 * index + index2]) resultArray[index] += 2 ** (7 - index2)
-        }
+    _humidity = bits[0];
+    _temperature = bits[2];
+
+    _sensorresponding = true;
+
+    if (bits[4] == (checksum & 0xFF)) {
+        _readSuccessful = true;
     }
 
-    // Verify checksum
-    checksumTmp = resultArray[0] + resultArray[1] + resultArray[2] + resultArray[3]
-    checksum = resultArray[4]
-    if (checksumTmp >= 512) checksumTmp -= 512
-    if (checksumTmp >= 256) checksumTmp -= 256
-    if (checksum == checksumTmp) _readSuccessful = true
-
-    // Read values (even if checksum fails)
-    if (true) {
-        if (DHT == DHTtype.DHT11) {
-            _humidity = resultArray[0]
-            _temperature = resultArray[2]
-        } else {
-            let temp_sign: number = 1
-            if (resultArray[2] >= 128) {
-                resultArray[2] -= 128
-                temp_sign = -1
-            }
-            _humidity = (resultArray[0] * 256 + resultArray[1]) / 10
-            _temperature = (resultArray[2] * 256 + resultArray[3]) / 10 * temp_sign
-        }
-        if (_temptype == tempType.fahrenheit)
-            _temperature = _temperature * 9 / 5 + 32
-    }
-
-    // Serial output
     if (serialOtput) {
-        serial.writeLine(DHTstr + " query completed in " + (endTime - startTime) + " microseconds")
-        if (_readSuccessful) {
-            serial.writeLine("Checksum ok")
-        } else {
-            serial.writeLine("Checksum error")
-        }
-        serial.writeLine("Humidity: " + _humidity + " %")
-        serial.writeLine("Temperature: " + _temperature + (_temptype == tempType.celsius ? " *C" : " *F"))
-        serial.writeLine("----------------------------------------")
+        serial.writeLine((DHT == DHTtype.DHT11 ? "DHT11" : "DHT22") + " query");
+        serial.writeLine(_readSuccessful ? "Checksum ok" : "Checksum error");
+        serial.writeLine("Humidity: " + _humidity + " %");
+        serial.writeLine("Temperature: " + _temperature + (_temptype == tempType.celsius ? " *C" : " *F"));
+        serial.writeLine("----------------------------------------");
     }
 
-    // Optional wait
-    if (wait) basic.pause(2000)
+    if (wait) basic.pause(2000);
 }
+
 
 
     /**
