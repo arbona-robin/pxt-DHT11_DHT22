@@ -110,8 +110,8 @@ namespace dht11_dht22 {
             if (true) {
                 if (DHT == DHTtype.DHT11) {
                     //DHT11
-                    _humidity = resultArray[0] + resultArray[1] / 100
-                    _temperature = resultArray[2] + resultArray[3] / 100
+                    _humidity = resultArray[0] 
+                    _temperature = resultArray[2] 
                 } else {
                     //DHT22
                     let temp_sign: number = 1
